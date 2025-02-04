@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block title %}Parser Pro Web - Parse Chat{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Parse Chat</h2>
+            </div>
+            <div class="card-body">
+                {% if error %}
+                <div class="alert alert-danger" role="alert">
+                    {{ error }}
+                </div>
+                {% endif %}
+                
+                <form id="parseForm" method="POST">
+                    <div class="mb-3">
+                        <label for="chat_id" class="form-label">Chat ID or Username</label>
+                        <input type="text" class="form-control" id="chat_id" name="chat_id" required>
+                        <div class="form-text">Enter chat ID or username (e.g., @chatname)</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="premium_only" name="premium_only">
+                            <label class="form-check-label" for="premium_only">
+                                Premium users only
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="with_phone" name="with_phone">
+                            <label class="form-check-label" for="with_phone">
+                                Users with phone numbers only
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="last_seen" class="form-label">Last Seen</label>
+                        <select class="form-select" id="last_seen" name="last_seen">
+                            <option value="">Any time</option>
+                            <option value="1">Last hour</option>
+                            <option value="6">Last 6 hours</option>
+                            <option value="24">Last day</option>
+                            <option value="72">Last 3 days</option>
+                            <option value="168">Last week</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="gender" class="form-label">Gender</label>
+                        <select class="form-select" id="gender" name="gender">
+                            <option value="">Any</option>
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                        </select>
+                    </div>
+
+                    <div class="text-center">
+                        <button type="submit" class="btn btn-primary" id="startParseBtn">
+                            <i class="fas fa-search me-2"></i>Start Parsing
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Progress Bar -->
+                <div class="progress mt-4" id="parseProgress" style="display: none;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" 
+                         role="progressbar" 
+                         aria-valuenow="0" 
+                         aria-valuemin="0" 
+                         aria-valuemax="100" 
+                         style="width: 0%">
+                        <span class="progress-text">Connecting...</span>
+                    </div>
+                </div>
+                <!-- Stage Description -->
+                <div class="text-center mt-2 text-muted small" id="stageDescription" style="display: none;">
+                    Establishing connection to Telegram
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Function to update progress bar and stage description
+function updateProgress(progress, stage) {
+    const progressBar = document.getElementById('parseProgress');
+    const progressBarInner = progressBar.querySelector('.progress-bar');
+    const stageDescription = document.getElementById('stageDescription');
+    const progressText = progressBar.querySelector('.progress-text');
+    
+    // Remove animation when in final stage
+    if (progress >= 90) {
+        progressBarInner.classList.remove('progress-bar-animated');
+    }
+    
+    progressBarInner.style.width = `${progress}%`;
+    progressBarInner.setAttribute('aria-valuenow', progress);
+    progressText.textContent = stage.title;
+    stageDescription.textContent = stage.description;
+}
+
+// Handle form submission
+document.getElementById('parseForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const form = this;
+    const progressBar = document.getElementById('parseProgress');
+    const stageDescription = document.getElementById('stageDescription');
+    const submitButton = document.getElementById('startParseBtn');
+    
+    // Show progress elements
+    progressBar.style.display = 'block';
+    stageDescription.style.display = 'block';
+    submitButton.disabled = true;
+
+    // Initial stage
+    updateProgress(5, {
+        title: 'Connecting...',
+        description: 'Establishing connection to Telegram'
+    });
+
+    // Submit form data
+    const formData = new FormData(form);
+
+    fetch(form.action, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (response.redirected) {
+            clearInterval(window.progressInterval);
+            
+            // Final stage before redirect
+            updateProgress(100, {
+                title: 'Complete!',
+                description: 'Chat parsing completed successfully'
+            });
+            
+            // Short delay to show completion
+            setTimeout(() => {
+                window.location.href = response.url;
+            }, 500);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        clearInterval(window.progressInterval);
+        
+        updateProgress(0, {
+            title: 'Error',
+            description: 'An error occurred during parsing'
+        });
+        setTimeout(resetFormState, 2000);
+    });
+
+    let progress = 5;
+    let currentStage = 0;
+    const stages = [
+        { progress: 15, title: 'Loading chat...', description: 'Retrieving chat information' },
+        { progress: 40, title: 'Scanning members...', description: 'Getting member list from chat' },
+        { progress: 70, title: 'Processing users...', description: 'Analyzing user information' },
+        { progress: 90, title: 'Filtering results...', description: 'Applying selected filters' },
+        { progress: 97, title: 'Almost done...', description: 'Finalizing results and preparing data' }
+    ];
+
+    window.progressInterval = setInterval(() => {
+        if (currentStage < stages.length) {
+            const stage = stages[currentStage];
+            if (progress < stage.progress) {
+                progress += 1;
+                updateProgress(progress, {
+                    title: stage.title,
+                    description: stage.description
+                });
+            } else {
+                currentStage++;
+            }
+        }
+    }, 1000);
+});
+
+// Function to reset form state
+function resetFormState() {
+    const form = document.getElementById('parseForm');
+    const progressBar = document.getElementById('parseProgress');
+    const stageDescription = document.getElementById('stageDescription');
+    const submitButton = document.getElementById('startParseBtn');
+    
+    form.reset();
+    progressBar.style.display = 'none';
+    stageDescription.style.display = 'none';
+    submitButton.disabled = false;
+    
+    if (window.progressInterval) {
+        clearInterval(window.progressInterval);
+        window.progressInterval = null;
+    }
+}
+
+// Reset state when page loads
+document.addEventListener('DOMContentLoaded', resetFormState);
+
+// Reset state when navigating back
+window.addEventListener('pageshow', function(event) {
+    if (event.persisted) {
+        resetFormState();
+    }
+});
+
+// Clear interval if user navigates away
+window.addEventListener('beforeunload', function() {
+    if (window.progressInterval) {
+        clearInterval(window.progressInterval);
+        window.progressInterval = null;
+    }
+});
+</script>
+
+<style>
+.progress {
+    height: 25px;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+}
+.progress-bar {
+    font-size: 14px;
+    line-height: 25px;
+    transition: width 0.3s ease;
+}
+.progress-text {
+    white-space: nowrap;
+    position: relative;
+    z-index: 1;
+}
+.btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+#stageDescription {
+    min-height: 20px;
+    transition: all 0.3s ease;
+}
+</style>
+
+<!-- Add Font Awesome for icons -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+{% endblock %} 

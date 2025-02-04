@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block title %}Parser Pro Web - Parse Comments{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="h4 mb-0">Parse Comments</h2>
+                </div>
+                <div class="card-body">
+                    {% if error %}
+                    <div class="alert alert-danger" role="alert">
+                        {{ error }}
+                    </div>
+                    {% endif %}
+
+                    <form action="/comments" method="post" id="parseForm">
+                        <div class="mb-3">
+                            <label for="channel_id" class="form-label">Channel ID or Username</label>
+                            <input type="text" class="form-control" id="channel_id" name="channel_id" required
+                                placeholder="Enter channel ID or username (e.g., @channelname)">
+                            <div class="form-text">Enter channel ID or username (e.g., @channelname)</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="limit" class="form-label">Number of Posts to Parse</label>
+                            <input type="number" class="form-control" id="limit" name="limit" value="10" min="1" max="100" required>
+                            <div class="form-text">Maximum 100 posts</div>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary" id="startScanBtn">
+                                <i class="fas fa-search me-2"></i>Start Scan
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Progress Bar -->
+                    <div class="progress mt-4" id="scanProgress" style="display: none;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" 
+                             role="progressbar" 
+                             aria-valuenow="0" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100" 
+                             style="width: 0%">
+                            <span class="progress-text">Connecting...</span>
+                        </div>
+                    </div>
+                    <!-- Stage Description -->
+                    <div class="text-center mt-2 text-muted small" id="stageDescription" style="display: none;">
+                        Establishing connection to Telegram
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Function to update progress bar and stage description
+function updateProgress(progress, stage) {
+    const progressBar = document.getElementById('scanProgress');
+    const progressBarInner = progressBar.querySelector('.progress-bar');
+    const stageDescription = document.getElementById('stageDescription');
+    const progressText = progressBar.querySelector('.progress-text');
+    
+    // Remove animation when in final stage
+    if (progress >= 90) {
+        progressBarInner.classList.remove('progress-bar-animated');
+    }
+    
+    progressBarInner.style.width = `${progress}%`;
+    progressBarInner.setAttribute('aria-valuenow', progress);
+    progressText.textContent = stage.title;
+    stageDescription.textContent = stage.description;
+}
+
+// Handle form submission
+document.getElementById('parseForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const form = this;
+    const progressBar = document.getElementById('scanProgress');
+    const stageDescription = document.getElementById('stageDescription');
+    const submitButton = document.getElementById('startScanBtn');
+    const limit = parseInt(form.querySelector('#limit').value);
+    
+    // Show progress elements
+    progressBar.style.display = 'block';
+    stageDescription.style.display = 'block';
+    submitButton.disabled = true;
+
+    // Initial stage
+    updateProgress(5, {
+        title: 'Connecting...',
+        description: 'Establishing connection to Telegram'
+    });
+
+    // Submit form data
+    const formData = new FormData(form);
+
+    fetch(form.action, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (response.redirected) {
+            clearInterval(window.progressInterval);
+            
+            // Final stage before redirect
+            updateProgress(100, {
+                title: 'Complete!',
+                description: 'Scan completed successfully'
+            });
+            
+            // Short delay to show completion
+            setTimeout(() => {
+                window.location.href = response.url;
+            }, 500);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        clearInterval(window.progressInterval);
+        
+        updateProgress(0, {
+            title: 'Error',
+            description: 'An error occurred during scanning'
+        });
+        setTimeout(resetFormState, 2000);
+    });
+
+    let currentPost = 0;
+    let progress = 5;
+
+    // Calculate progress steps
+    const connectionProgress = 5;  // Initial connection: 0-5%
+    const channelProgress = 10;    // Channel loading: 5-15%
+    const postsProgress = 75;      // Posts processing: 15-90%
+    const finalProgress = 7;       // Final processing: 90-97%
+    
+    const progressPerPost = postsProgress / limit;  // Progress percentage per post
+
+    window.progressInterval = setInterval(() => {
+        if (currentPost < limit) {
+            // Simulate processing each post
+            if (progress < 15) {
+                // Channel loading phase
+                progress += 1;
+                updateProgress(progress, {
+                    title: 'Loading channel...',
+                    description: 'Retrieving channel information'
+                });
+            } else {
+                // Post processing phase
+                currentPost++;
+                progress = 15 + (currentPost * progressPerPost);
+                
+                updateProgress(Math.min(progress, 90), {
+                    title: `Processing post ${currentPost}/${limit}...`,
+                    description: `Scanning comments from post ${currentPost} of ${limit}`
+                });
+
+                // When all posts are processed, start final phase
+                if (currentPost === limit) {
+                    clearInterval(window.progressInterval);
+                    progress = 97;
+                    updateProgress(progress, {
+                        title: 'Almost done...',
+                        description: 'Finalizing results and preparing data'
+                    });
+                }
+            }
+        }
+    }, 1000);
+});
+
+// Function to reset form state
+function resetFormState() {
+    const form = document.getElementById('parseForm');
+    const progressBar = document.getElementById('scanProgress');
+    const stageDescription = document.getElementById('stageDescription');
+    const submitButton = document.getElementById('startScanBtn');
+    
+    form.reset();
+    progressBar.style.display = 'none';
+    stageDescription.style.display = 'none';
+    submitButton.disabled = false;
+    
+    if (window.progressInterval) {
+        clearInterval(window.progressInterval);
+        window.progressInterval = null;
+    }
+}
+
+// Reset state when page loads
+document.addEventListener('DOMContentLoaded', resetFormState);
+
+// Reset state when navigating back
+window.addEventListener('pageshow', function(event) {
+    if (event.persisted) {
+        resetFormState();
+    }
+});
+
+// Clear interval if user navigates away
+window.addEventListener('beforeunload', function() {
+    if (window.progressInterval) {
+        clearInterval(window.progressInterval);
+        window.progressInterval = null;
+    }
+});
+</script>
+
+<style>
+.progress {
+    height: 25px;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+}
+.progress-bar {
+    font-size: 14px;
+    line-height: 25px;
+    transition: width 0.3s ease;
+}
+.progress-text {
+    white-space: nowrap;
+    position: relative;
+    z-index: 1;
+}
+.btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+#stageDescription {
+    min-height: 20px;
+    transition: all 0.3s ease;
+}
+</style>
+
+<!-- Add Font Awesome for icons -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+{% endblock %} 
