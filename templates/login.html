@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}TGscan - Login{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="h4 mb-0">Login</h2>
+                </div>
+                <div class="card-body">
+                    {% if request.query_params.get('registered') == 'true' %}
+                    <div class="alert alert-success" role="alert">
+                        Registration successful! Please login with your credentials.
+                    </div>
+                    {% endif %}
+                    
+                    <div id="errorAlert" class="alert alert-danger d-none" role="alert"></div>
+
+                    <form id="loginForm" method="post">
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="email" name="email" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Password</label>
+                            <input type="password" class="form-control" id="password" name="password" required>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-sign-in-alt me-2"></i>Login
+                            </button>
+                            <a href="/register" class="btn btn-outline-secondary">
+                                <i class="fas fa-user-plus me-2"></i>Register
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('loginForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const errorAlert = document.getElementById('errorAlert');
+    errorAlert.classList.add('d-none');
+    
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    
+    try {
+        console.log('Login attempt:', { email }); // Debug log
+        const response = await fetch('/auth/token', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: `email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`
+        });
+        
+        console.log('Login response status:', response.status); // Debug log
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.log('Login failed:', errorData); // Debug log
+            throw new Error(errorData.detail || 'Login failed');
+        }
+
+        const data = await response.json();
+        console.log('Login response data:', data); // Debug log
+
+        // Store the token
+        localStorage.setItem('access_token', data.access_token);
+        console.log('Stored access token'); // Debug log
+        
+        // Get user info
+        console.log('Fetching user info...'); // Debug log
+        const userResponse = await fetch('/auth/me', {
+            headers: {
+                'Authorization': `Bearer ${data.access_token}`
+            }
+        });
+        
+        console.log('User info response status:', userResponse.status); // Debug log
+        
+        if (!userResponse.ok) {
+            console.error('Failed to get user info:', userResponse.status);
+            throw new Error('Failed to get user information');
+        }
+        
+        const userData = await userResponse.json();
+        console.log('User data:', userData); // Debug log
+        localStorage.setItem('user_info', JSON.stringify(userData));
+        
+        // Update UI
+        document.getElementById('username').textContent = userData.username;
+        document.getElementById('loginItem').classList.add('d-none');
+        document.getElementById('registerItem').classList.add('d-none');
+        document.getElementById('userDropdown').classList.remove('d-none');
+        
+        // Redirect to home page
+        window.location.href = '/';
+        
+    } catch (error) {
+        console.error('Login error:', error);
+        errorAlert.textContent = error.message || 'An error occurred during login. Please try again.';
+        errorAlert.classList.remove('d-none');
+    }
+});
+</script>
+{% endblock %} 

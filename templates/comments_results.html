@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Parser Pro Web - Comments Results{% endblock %}
+{% block title %}TGscan - Comments Results{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
@@ -10,27 +10,25 @@
                 <h2 class="h4 mb-0">Comments Results</h2>
                 {% if comments and comments|length > 0 %}
                 <div class="action-buttons">
-                    <button class="btn btn-success" onclick="downloadComments()">
-                        <i class="fas fa-download me-2"></i>Download Comments
-                    </button>
-                    <button onclick="startNewScan()" class="btn btn-primary ms-2" id="startScanBtn">
+                    <div class="dropdown d-inline-block">
+                        <button class="btn btn-success dropdown-toggle" type="button" id="downloadDropdown" data-bs-toggle="dropdown">
+                            <i class="fas fa-download me-2"></i>Download Results
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="#" onclick="downloadComments('csv')">
+                                <i class="fas fa-file-csv me-2"></i>Download as CSV
+                            </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="downloadComments('json')">
+                                <i class="fas fa-file-code me-2"></i>Download as JSON
+                            </a></li>
+                        </ul>
+                    </div>
+                    <a href="/comments" class="btn btn-primary ms-2">
                         <i class="fas fa-search me-2"></i>Start Scan
-                    </button>
+                    </a>
                 </div>
                 {% endif %}
             </div>
-        </div>
-    </div>
-
-    <!-- Progress Bar -->
-    <div class="progress mb-4 d-none" id="scanProgress">
-        <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" 
-             role="progressbar" 
-             aria-valuenow="0" 
-             aria-valuemin="0" 
-             aria-valuemax="100" 
-             style="width: 0%">
-            <span class="progress-text">Scanning comments...</span>
         </div>
     </div>
 
@@ -65,35 +63,30 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for comment in page_comments %}
+                        {% for user in page_comments %}
                         <tr>
                             <td>
-                                <a href="#" class="text-primary text-decoration-none">{{ comment.username }}</a>
-                            </td>
-                            <td>{{ comment.first_name }} {{ comment.last_name if comment.last_name else '' }}</td>
-                            <td>
-                                {% if comment.is_premium %}
-                                <span class="badge bg-warning text-dark">Premium</span>
-                                {% endif %}
-                            </td>
-                            <td>-</td>
-                            <td>-</td>
-                            <td>
-                                <code>{{ comment.user_id }}</code>
-                            </td>
-                            <td class="text-center">
-                                {% if comment.username and comment.username != 'No username' %}
-                                <a href="https://t.me/{{ comment.username|replace('@', '') }}" 
-                                   class="btn btn-sm btn-outline-primary" 
-                                   target="_blank">
-                                    <i class="fas fa-paper-plane"></i>
-                                </a>
+                                {% if user.username %}
+                                <a href="https://t.me/{{ user.username }}" target="_blank" class="text-decoration-none">@{{ user.username }}</a>
                                 {% else %}
-                                <a href="tg://user?id={{ comment.user_id }}" 
-                                   class="btn btn-sm btn-outline-primary">
+                                No username
+                                {% endif %}
+                            </td>
+                            <td>{{ user.first_name }} {{ user.last_name if user.last_name else '' }}</td>
+                            <td>
+                                {% if user.premium %}
+                                <span class="badge bg-warning text-dark">Premium</span>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td>{{ user.phone if user.phone else '-' }}</td>
+                            <td>{{ user.last_seen if user.last_seen else '-' }}</td>
+                            <td><code>{{ user.id }}</code></td>
+                            <td class="text-center">
+                                <a href="tg://user?id={{ user.id }}" class="btn btn-sm btn-outline-primary">
                                     <i class="fas fa-paper-plane"></i>
                                 </a>
-                                {% endif %}
                             </td>
                         </tr>
                         {% endfor %}
@@ -107,10 +100,10 @@
                 <ul class="pagination justify-content-center mb-0">
                     {% if current_page > 1 %}
                     <li class="page-item">
-                        <a class="page-link" href="?page=1">First</a>
+                        <a class="page-link" href="#" onclick="changePage(1)">First</a>
                     </li>
                     <li class="page-item">
-                        <a class="page-link" href="?page={{ current_page - 1 }}">Previous</a>
+                        <a class="page-link" href="#" onclick="changePage({{ current_page - 1 }})">Previous</a>
                     </li>
                     {% endif %}
 
@@ -119,16 +112,16 @@
                         [total_pages + 1, current_page + 3]|min
                     ) %}
                     <li class="page-item {% if page == current_page %}active{% endif %}">
-                        <a class="page-link" href="?page={{ page }}">{{ page }}</a>
+                        <a class="page-link" href="#" onclick="changePage({{ page }})">{{ page }}</a>
                     </li>
                     {% endfor %}
 
                     {% if current_page < total_pages %}
                     <li class="page-item">
-                        <a class="page-link" href="?page={{ current_page + 1 }}">Next</a>
+                        <a class="page-link" href="#" onclick="changePage({{ current_page + 1 }})">Next</a>
                     </li>
                     <li class="page-item">
-                        <a class="page-link" href="?page={{ total_pages }}">Last</a>
+                        <a class="page-link" href="#" onclick="changePage({{ total_pages }})">Last</a>
                     </li>
                     {% endif %}
                 </ul>
@@ -138,52 +131,72 @@
     </div>
     {% else %}
     <div class="alert alert-info" role="alert">
-        No comments found. Try another channel or increase the number of posts to parse.
+        No results found. Try scanning another channel or increase the number of posts to parse.
     </div>
     {% endif %}
 </div>
 
 <script>
-function downloadComments() {
+function downloadComments(format) {
     const comments = {{ comments|tojson if comments else '[]' }};
     if (!comments || comments.length === 0) return;
 
-    const csv = [
-        ['Username', 'Name', 'Premium', 'Phone', 'Last Seen', 'User ID'],
-        ...comments.map(comment => [
-            comment.username || '',
-            `${comment.first_name} ${comment.last_name || ''}`.trim(),
-            comment.is_premium ? 'Yes' : 'No',
-            '-',
-            '-',
-            comment.user_id || ''
-        ])
-    ].map(row => row.map(field => `"${String(field).replace(/"/g, '""')}"`).join(',')).join('\n');
+    if (format === 'csv') {
+        const csv = [
+            ['Username', 'Name', 'Premium', 'Phone', 'Last Seen', 'User ID', 'Comment Count'],
+            ...comments.map(user => [
+                user.username ? '@' + user.username : 'No username',
+                `${user.first_name} ${user.last_name || ''}`.trim(),
+                user.premium ? 'Yes' : 'No',
+                user.phone || '-',
+                user.last_seen || '-',
+                user.id,
+                user.comment_count || 1
+            ])
+        ].map(row => row.map(field => `"${String(field).replace(/"/g, '""')}"`).join(',')).join('\n');
 
-    const blob = new Blob([csv], { type: 'text/csv' });
+        downloadFile(csv, 'commenters.csv', 'text/csv');
+    } else if (format === 'json') {
+        const jsonData = JSON.stringify(comments, null, 2);
+        downloadFile(jsonData, 'commenters.json', 'application/json');
+    }
+}
+
+function downloadFile(content, filename, contentType) {
+    const blob = new Blob([content], { type: contentType });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.setAttribute('href', url);
-    a.setAttribute('download', 'parsed_comments.csv');
+    a.setAttribute('download', filename);
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
 }
 
-function startNewScan() {
-    window.location.href = '/comments';
+async function changePage(pageNum) {
+    try {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            window.location.href = '/login';
+            return;
+        }
+
+        const currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set('page', pageNum);
+        await handleProtectedRoute(currentUrl.pathname + currentUrl.search, true);
+    } catch (error) {
+        console.error('Error changing page:', error);
+        if (error.message.includes('Authentication failed')) {
+            window.location.href = '/login';
+        } else {
+            alert('Error changing page. Please try again.');
+        }
+    }
 }
 </script>
 
 <style>
-.progress {
-    height: 25px;
-    background-color: #f8f9fa;
-    border: 1px solid #dee2e6;
-}
-.progress-bar {
-    font-size: 14px;
-    line-height: 25px;
-}
 .badge.bg-warning {
     background-color: #ffa500 !important;
     color: #000;
@@ -191,23 +204,10 @@ function startNewScan() {
     padding: 4px 8px;
     border-radius: 4px;
 }
-.table th {
-    font-weight: 500;
-    border-bottom: 2px solid #dee2e6;
-}
-.table td {
-    vertical-align: middle;
-}
 .table td code {
     color: #0066cc;
     background: none;
     padding: 0;
 }
-.table td a {
-    color: #0066cc;
-}
 </style>
-
-<!-- Add Font Awesome for icons -->
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 {% endblock %} 

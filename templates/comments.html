@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Parser Pro Web - Parse Comments{% endblock %}
+{% block title %}TGscan - Parse Comments{% endblock %}
 
 {% block content %}
 <div class="container">
@@ -19,15 +19,15 @@
 
                     <form action="/comments" method="post" id="parseForm">
                         <div class="mb-3">
-                            <label for="channel_id" class="form-label">Channel ID or Username</label>
-                            <input type="text" class="form-control" id="channel_id" name="channel_id" required
+                            <label for="chat_id" class="form-label">Channel ID or Username</label>
+                            <input type="text" class="form-control" id="chat_id" name="chat_id" required
                                 placeholder="Enter channel ID or username (e.g., @channelname)">
                             <div class="form-text">Enter channel ID or username (e.g., @channelname)</div>
                         </div>
 
                         <div class="mb-3">
-                            <label for="limit" class="form-label">Number of Posts to Parse</label>
-                            <input type="number" class="form-control" id="limit" name="limit" value="10" min="1" max="100" required>
+                            <label for="message_limit" class="form-label">Number of Posts to Parse</label>
+                            <input type="number" class="form-control" id="message_limit" name="message_limit" value="10" min="1" max="100" required>
                             <div class="form-text">Maximum 100 posts</div>
                         </div>
 
@@ -60,17 +60,56 @@
 </div>
 
 <script>
+// Function to verify authentication
+async function verifyAuth() {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        window.location.href = '/login';
+        return false;
+    }
+
+    try {
+        const response = await fetch('/auth/me', {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('user_info');
+            window.location.href = '/login';
+            return false;
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('Auth verification error:', error);
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('user_info');
+        window.location.href = '/login';
+        return false;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', async function() {
+    await verifyAuth();
+});
+
+// Handle page visibility changes
+document.addEventListener('visibilitychange', async function() {
+    if (document.visibilityState === 'visible') {
+        await verifyAuth();
+    }
+});
+
 // Function to update progress bar and stage description
 function updateProgress(progress, stage) {
     const progressBar = document.getElementById('scanProgress');
     const progressBarInner = progressBar.querySelector('.progress-bar');
     const stageDescription = document.getElementById('stageDescription');
     const progressText = progressBar.querySelector('.progress-text');
-    
-    // Remove animation when in final stage
-    if (progress >= 90) {
-        progressBarInner.classList.remove('progress-bar-animated');
-    }
     
     progressBarInner.style.width = `${progress}%`;
     progressBarInner.setAttribute('aria-valuenow', progress);
@@ -79,103 +118,133 @@ function updateProgress(progress, stage) {
 }
 
 // Handle form submission
-document.getElementById('parseForm').addEventListener('submit', function(e) {
+document.getElementById('parseForm').addEventListener('submit', async function(e) {
     e.preventDefault();
+    
+    if (!(await verifyAuth())) {
+        return;
+    }
     
     const form = this;
     const progressBar = document.getElementById('scanProgress');
     const stageDescription = document.getElementById('stageDescription');
     const submitButton = document.getElementById('startScanBtn');
-    const limit = parseInt(form.querySelector('#limit').value);
+    const numPosts = parseInt(form.querySelector('#message_limit').value);
     
     // Show progress elements
     progressBar.style.display = 'block';
     stageDescription.style.display = 'block';
     submitButton.disabled = true;
 
-    // Initial stage
-    updateProgress(5, {
-        title: 'Connecting...',
-        description: 'Establishing connection to Telegram'
+    // Initialize progress tracking
+    let currentProgress = 0;
+    let currentStage = 0;
+    
+    const stages = [
+        { 
+            start: 0,
+            end: 15,
+            title: 'Connecting...',
+            description: 'Establishing connection to Telegram'
+        },
+        { 
+            start: 15,
+            end: 30,
+            title: 'Loading channel...',
+            description: 'Retrieving channel information'
+        }
+    ];
+
+    // Add dynamic stages for each post
+    const postsStartProgress = 30;
+    const postsEndProgress = 90;
+    const progressPerPost = (postsEndProgress - postsStartProgress) / numPosts;
+
+    for (let i = 0; i < numPosts; i++) {
+        stages.push({
+            start: postsStartProgress + (i * progressPerPost),
+            end: postsStartProgress + ((i + 1) * progressPerPost),
+            title: `Processing post ${i + 1}/${numPosts}...`,
+            description: `Scanning comments from post ${i + 1} of ${numPosts}`
+        });
+    }
+
+    // Add final stage
+    stages.push({
+        start: 90,
+        end: 100,
+        title: 'Finalizing...',
+        description: 'Preparing and saving results'
     });
 
-    // Submit form data
-    const formData = new FormData(form);
-
-    fetch(form.action, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => {
-        if (response.redirected) {
-            clearInterval(window.progressInterval);
+    // Start progress animation
+    const progressInterval = setInterval(() => {
+        if (currentStage < stages.length) {
+            const stage = stages[currentStage];
             
-            // Final stage before redirect
+            if (currentProgress < stage.end) {
+                currentProgress = Math.min(currentProgress + 0.5, stage.end);
+                updateProgress(currentProgress, {
+                    title: stage.title,
+                    description: stage.description
+                });
+            } else {
+                currentStage++;
+            }
+        }
+    }, 100);
+
+    try {
+        // Submit form data
+        const formData = new FormData(form);
+        const token = localStorage.getItem('access_token');
+        const response = await fetch('/comments', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'text/html'
+            },
+            body: formData,
+            credentials: 'same-origin',
+            redirect: 'follow'  // Explicitly follow redirects
+        });
+
+        if (!response.ok) {
+            clearInterval(progressInterval);
+            if (response.status === 401) {
+                throw new Error('Authentication failed');
+            }
+            throw new Error('Failed to parse comments');
+        }
+
+        if (response.redirected) {
+            clearInterval(progressInterval);
+            // Show completion before redirect
             updateProgress(100, {
                 title: 'Complete!',
-                description: 'Scan completed successfully'
+                description: `Successfully processed ${numPosts} posts`
             });
             
             // Short delay to show completion
-            setTimeout(() => {
-                window.location.href = response.url;
-            }, 500);
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const redirectUrl = new URL(response.url);
+            await handleProtectedRoute(redirectUrl.pathname + redirectUrl.search, true);
+            return;
         }
-    })
-    .catch(error => {
+
+    } catch (error) {
         console.error('Error:', error);
-        clearInterval(window.progressInterval);
-        
-        updateProgress(0, {
-            title: 'Error',
-            description: 'An error occurred during scanning'
-        });
-        setTimeout(resetFormState, 2000);
-    });
-
-    let currentPost = 0;
-    let progress = 5;
-
-    // Calculate progress steps
-    const connectionProgress = 5;  // Initial connection: 0-5%
-    const channelProgress = 10;    // Channel loading: 5-15%
-    const postsProgress = 75;      // Posts processing: 15-90%
-    const finalProgress = 7;       // Final processing: 90-97%
-    
-    const progressPerPost = postsProgress / limit;  // Progress percentage per post
-
-    window.progressInterval = setInterval(() => {
-        if (currentPost < limit) {
-            // Simulate processing each post
-            if (progress < 15) {
-                // Channel loading phase
-                progress += 1;
-                updateProgress(progress, {
-                    title: 'Loading channel...',
-                    description: 'Retrieving channel information'
-                });
-            } else {
-                // Post processing phase
-                currentPost++;
-                progress = 15 + (currentPost * progressPerPost);
-                
-                updateProgress(Math.min(progress, 90), {
-                    title: `Processing post ${currentPost}/${limit}...`,
-                    description: `Scanning comments from post ${currentPost} of ${limit}`
-                });
-
-                // When all posts are processed, start final phase
-                if (currentPost === limit) {
-                    clearInterval(window.progressInterval);
-                    progress = 97;
-                    updateProgress(progress, {
-                        title: 'Almost done...',
-                        description: 'Finalizing results and preparing data'
-                    });
-                }
-            }
+        clearInterval(progressInterval);
+        if (error.message.includes('Authentication failed')) {
+            await verifyAuth();
+        } else {
+            updateProgress(0, {
+                title: 'Error',
+                description: error.message || 'An error occurred during scanning'
+            });
+            setTimeout(resetFormState, 2000);
         }
-    }, 1000);
+    }
 });
 
 // Function to reset form state
@@ -189,11 +258,6 @@ function resetFormState() {
     progressBar.style.display = 'none';
     stageDescription.style.display = 'none';
     submitButton.disabled = false;
-    
-    if (window.progressInterval) {
-        clearInterval(window.progressInterval);
-        window.progressInterval = null;
-    }
 }
 
 // Reset state when page loads
@@ -206,11 +270,10 @@ window.addEventListener('pageshow', function(event) {
     }
 });
 
-// Clear interval if user navigates away
+// Clean up interval when leaving page
 window.addEventListener('beforeunload', function() {
     if (window.progressInterval) {
         clearInterval(window.progressInterval);
-        window.progressInterval = null;
     }
 });
 </script>
@@ -224,12 +287,6 @@ window.addEventListener('beforeunload', function() {
 .progress-bar {
     font-size: 14px;
     line-height: 25px;
-    transition: width 0.3s ease;
-}
-.progress-text {
-    white-space: nowrap;
-    position: relative;
-    z-index: 1;
 }
 .btn:disabled {
     cursor: not-allowed;
@@ -237,10 +294,6 @@ window.addEventListener('beforeunload', function() {
 }
 #stageDescription {
     min-height: 20px;
-    transition: all 0.3s ease;
 }
 </style>
-
-<!-- Add Font Awesome for icons -->
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 {% endblock %} 

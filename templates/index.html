@@ -1,55 +1,68 @@
 {% extends "base.html" %}
 
-{% block title %}Parser Pro Web - Home{% endblock %}
+{% block title %}TGscan - Home{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-12">
-        <h1 class="mb-4">Welcome to Parser Pro Web</h1>
-        <div class="card mb-4">
-            <div class="card-header">
-                <h2 class="h5 mb-0">Standard Features</h2>
-            </div>
-            <div class="card-body">
-                <ul class="list-group list-group-flush">
-                    <li class="list-group-item">Parse open chat participants (up to 10k users)</li>
-                    <li class="list-group-item">Available 24/7 without limitations</li>
-                </ul>
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8 text-center">
+            <h1 class="display-4 mb-4">Welcome to TGscan</h1>
+            <p class="lead mb-5">A powerful tool for analyzing Telegram chats and comments.</p>
+        </div>
+    </div>
+
+    <div class="row justify-content-center mb-5">
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-users fa-3x mb-3 text-primary"></i>
+                    <h3 class="card-title">Parse Chat Members</h3>
+                    <p class="card-text">Extract member information from Telegram chats with advanced filtering options.</p>
+                    <a href="/parse" class="btn btn-primary" data-protected="true">Start Parsing</a>
+                </div>
             </div>
         </div>
-
-        <div class="card">
-            <div class="card-header">
-                <h2 class="h5 mb-0">Premium Features</h2>
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-comments fa-3x mb-3 text-success"></i>
+                    <h3 class="card-title">Parse Comments</h3>
+                    <p class="card-text">Analyze comments and interactions in Telegram channels and groups.</p>
+                    <a href="/comments" class="btn btn-success">Analyze Comments</a>
+                </div>
             </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h3 class="h6">Chat Parsing Options</h3>
-                        <ul class="list-group list-group-flush mb-3">
-                            <li class="list-group-item">Parse both open and private chats</li>
-                            <li class="list-group-item">Filter premium users only</li>
-                            <li class="list-group-item">Filter users with phone numbers</li>
-                            <li class="list-group-item">Filter by last seen status</li>
-                        </ul>
-                    </div>
-                    <div class="col-md-6">
-                        <h3 class="h6">Additional Features</h3>
-                        <ul class="list-group list-group-flush">
-                            <li class="list-group-item">Parse active chat participants</li>
-                            <li class="list-group-item">Bulk chat parsing</li>
-                            <li class="list-group-item">Comment parsing (up to 100 posts)</li>
-                            <li class="list-group-item">Gender-based filtering</li>
-                        </ul>
+        </div>
+    </div>
+
+    <div class="row justify-content-center" id="gettingStartedSection">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-body">
+                    <h4 class="card-title text-center mb-4">Getting Started</h4>
+                    <div class="d-grid gap-3">
+                        <a href="/register" class="btn btn-lg btn-outline-primary">
+                            <i class="fas fa-user-plus me-2"></i>Create an Account
+                        </a>
+                        <a href="/login" class="btn btn-lg btn-outline-success">
+                            <i class="fas fa-sign-in-alt me-2"></i>Login to Your Account
+                        </a>
                     </div>
                 </div>
             </div>
         </div>
-
-        <div class="mt-4">
-            <a href="/parse" class="btn btn-primary me-2">Start Parsing Chat</a>
-            <a href="/comments" class="btn btn-secondary">Parse Comments</a>
-        </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const token = localStorage.getItem('access_token');
+    const gettingStartedSection = document.getElementById('gettingStartedSection');
+    
+    if (token) {
+        gettingStartedSection.style.display = 'none';
+    } else {
+        gettingStartedSection.style.display = 'flex';
+    }
+});
+</script>
 {% endblock %} 

@@ -16,7 +16,7 @@
                 </div>
                 {% endif %}
                 
-                <form id="parseForm" method="POST">
+                <form id="parseForm" method="POST" action="/parse">
                     <div class="mb-3">
                         <label for="chat_id" class="form-label">Chat ID or Username</label>
                         <input type="text" class="form-control" id="chat_id" name="chat_id" required>
@@ -88,7 +88,9 @@
         </div>
     </div>
 </div>
+{% endblock %}
 
+{% block extra_js %}
 <script>
 // Function to update progress bar and stage description
 function updateProgress(progress, stage) {
@@ -108,9 +110,60 @@ function updateProgress(progress, stage) {
     stageDescription.textContent = stage.description;
 }
 
+// Function to verify authentication
+async function verifyAuth() {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        window.location.href = '/login';
+        return false;
+    }
+
+    try {
+        const response = await fetch('/auth/me', {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('user_info');
+            window.location.href = '/login';
+            return false;
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('Auth verification error:', error);
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('user_info');
+        window.location.href = '/login';
+        return false;
+    }
+}
+
+// Verify auth on page load
+document.addEventListener('DOMContentLoaded', async function() {
+    await verifyAuth();
+});
+
+// Handle page visibility changes
+document.addEventListener('visibilitychange', async function() {
+    if (document.visibilityState === 'visible') {
+        await verifyAuth();
+    }
+});
+
 // Handle form submission
-document.getElementById('parseForm').addEventListener('submit', function(e) {
+document.getElementById('parseForm').addEventListener('submit', async function(e) {
     e.preventDefault();
+    
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        window.location.href = '/login';
+        return;
+    }
     
     const form = this;
     const progressBar = document.getElementById('parseProgress');
@@ -122,45 +175,76 @@ document.getElementById('parseForm').addEventListener('submit', function(e) {
     stageDescription.style.display = 'block';
     submitButton.disabled = true;
 
-    // Initial stage
-    updateProgress(5, {
-        title: 'Connecting...',
-        description: 'Establishing connection to Telegram'
-    });
+    try {
+        // Debug logging
+        console.log('Starting form submission...');
+        
+        // Create FormData from form
+        const formData = new FormData(form);
+        
+        // Debug logging for token
+        console.log('Using token:', token.substring(0, 10) + '...');
+        
+        const response = await fetch('/parse', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            body: formData
+        });
 
-    // Submit form data
-    const formData = new FormData(form);
-
-    fetch(form.action, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => {
-        if (response.redirected) {
-            clearInterval(window.progressInterval);
+        // Debug logging
+        console.log('Response status:', response.status);
+        
+        if (!response.ok) {
+            if (response.status === 401) {
+                console.error('Authentication failed');
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('user_info');
+                window.location.href = '/login';
+                return;
+            }
             
-            // Final stage before redirect
-            updateProgress(100, {
-                title: 'Complete!',
-                description: 'Chat parsing completed successfully'
-            });
-            
-            // Short delay to show completion
-            setTimeout(() => {
-                window.location.href = response.url;
-            }, 500);
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Failed to parse chat');
+            }
+            throw new Error('Failed to parse chat');
         }
-    })
-    .catch(error => {
+
+        // Handle successful response
+        if (response.redirected) {
+            window.location.href = response.url;
+            return;
+        }
+
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('text/html')) {
+            const html = await response.text();
+            document.documentElement.innerHTML = html;
+            // Re-initialize everything
+            initializeComponents();
+            updateAuthUI();
+            initializeEventListeners();
+        }
+        
+    } catch (error) {
         console.error('Error:', error);
         clearInterval(window.progressInterval);
         
-        updateProgress(0, {
-            title: 'Error',
-            description: 'An error occurred during parsing'
-        });
-        setTimeout(resetFormState, 2000);
-    });
+        if (error.message.includes('Authentication failed')) {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('user_info');
+            window.location.href = '/login';
+        } else {
+            updateProgress(0, {
+                title: 'Error',
+                description: error.message || 'An error occurred during parsing'
+            });
+            setTimeout(resetFormState, 2000);
+        }
+    }
 
     let progress = 5;
     let currentStage = 0;

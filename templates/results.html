@@ -94,10 +94,10 @@
                 <ul class="pagination justify-content-center mb-0">
                     {% if current_page > 1 %}
                     <li class="page-item">
-                        <a class="page-link" href="?page=1">First</a>
+                        <a class="page-link" href="/api/files/{{ file_id }}/view?page=1" data-protected="true">First</a>
                     </li>
                     <li class="page-item">
-                        <a class="page-link" href="?page={{ current_page - 1 }}">Previous</a>
+                        <a class="page-link" href="/api/files/{{ file_id }}/view?page={{ current_page - 1 }}" data-protected="true">Previous</a>
                     </li>
                     {% endif %}
 
@@ -106,16 +106,16 @@
                         [total_pages + 1, current_page + 3]|min
                     ) %}
                     <li class="page-item {% if page == current_page %}active{% endif %}">
-                        <a class="page-link" href="?page={{ page }}">{{ page }}</a>
+                        <a class="page-link" href="/api/files/{{ file_id }}/view?page={{ page }}" data-protected="true">{{ page }}</a>
                     </li>
                     {% endfor %}
 
                     {% if current_page < total_pages %}
                     <li class="page-item">
-                        <a class="page-link" href="?page={{ current_page + 1 }}">Next</a>
+                        <a class="page-link" href="/api/files/{{ file_id }}/view?page={{ current_page + 1 }}" data-protected="true">Next</a>
                     </li>
                     <li class="page-item">
-                        <a class="page-link" href="?page={{ total_pages }}">Last</a>
+                        <a class="page-link" href="/api/files/{{ file_id }}/view?page={{ total_pages }}" data-protected="true">Last</a>
                     </li>
                     {% endif %}
                 </ul>

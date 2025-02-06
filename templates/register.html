@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}TGscan - Register{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="h4 mb-0">Register</h2>
+                </div>
+                <div class="card-body">
+                    <div id="errorAlert" class="alert alert-danger d-none" role="alert"></div>
+
+                    <form id="registerForm">
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="email" name="email" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Username</label>
+                            <input type="text" class="form-control" id="username" name="username" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Password</label>
+                            <input type="password" class="form-control" id="password" name="password" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="confirmPassword" class="form-label">Confirm Password</label>
+                            <input type="password" class="form-control" id="confirmPassword" name="confirmPassword" required>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-user-plus me-2"></i>Register
+                            </button>
+                            <a href="/login" class="btn btn-outline-secondary">
+                                <i class="fas fa-sign-in-alt me-2"></i>Back to Login
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const form = document.getElementById('registerForm');
+const errorAlert = document.getElementById('errorAlert');
+
+form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    errorAlert.classList.add('d-none');
+
+    // Get form values
+    const formData = new FormData(form);
+    const email = formData.get('email');
+    const username = formData.get('username');
+    const password = formData.get('password');
+    const confirmPassword = formData.get('confirmPassword');
+
+    // Debug log
+    console.log('Form data:', {
+        email,
+        username,
+        passwordLength: password ? password.length : 0
+    });
+
+    // Validate passwords match
+    if (password !== confirmPassword) {
+        errorAlert.textContent = 'Passwords do not match';
+        errorAlert.classList.remove('d-none');
+        return;
+    }
+
+    try {
+        // Build request body
+        const data = new URLSearchParams();
+        data.append('email', email);
+        data.append('username', username);
+        data.append('password', password);
+
+        // Debug log
+        console.log('Request data:', data.toString());
+
+        // Send request
+        const response = await fetch('/auth/register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: data.toString()
+        });
+
+        // Debug log
+        console.log('Response status:', response.status);
+
+        const responseData = await response.json();
+        console.log('Response data:', responseData);
+
+        if (response.ok) {
+            window.location.href = '/login?registered=true';
+        } else {
+            throw new Error(responseData.detail || 'Registration failed');
+        }
+    } catch (error) {
+        console.error('Registration error:', error);
+        errorAlert.textContent = error.message;
+        errorAlert.classList.remove('d-none');
+    }
+});
+</script>
+{% endblock %} 

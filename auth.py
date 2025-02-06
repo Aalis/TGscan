@@ -7,6 +7,19 @@ import time
 import os
 import sys
 from pathlib import Path
+from fastapi import APIRouter, Depends, HTTPException, status, Form
+from sqlalchemy.orm import Session
+from datetime import timedelta
+import models
+import schemas
+from database import get_db
+from security import (
+    verify_password,
+    get_password_hash,
+    create_access_token,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    get_current_active_user
+)
 
 # Set up logging with more detailed format
 logging.basicConfig(
@@ -214,3 +227,139 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\nError: {str(e)}")
         logger.error(f"Fatal error: {str(e)}", exc_info=True)
+
+router = APIRouter(tags=["authentication"])
+
+@router.post("/register", response_model=schemas.User)
+async def register(
+    email: str = Form(...),
+    username: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    try:
+        # Debug logging
+        print(f"Received registration request:")
+        print(f"- Email: {email}")
+        print(f"- Username: {username}")
+        print(f"- Password length: {len(password)}")
+        
+        # Basic validation
+        if not email or not username or not password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="All fields are required"
+            )
+        
+        # Email validation
+        if '@' not in email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid email format"
+            )
+        
+        # Username validation
+        if not username or username.lower() in ['undefined', 'null', '']:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid username"
+            )
+        
+        # Check existing email
+        if db.query(models.User).filter(models.User.email == email).first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
+        
+        # Check existing username
+        if db.query(models.User).filter(models.User.username == username).first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already taken"
+            )
+        
+        # Create user
+        hashed_password = get_password_hash(password)
+        new_user = models.User(
+            email=email,
+            username=username,
+            hashed_password=hashed_password,
+            is_active=True
+        )
+        
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        
+        print(f"User created successfully:")
+        print(f"- ID: {new_user.id}")
+        print(f"- Username: {new_user.username}")
+        
+        return new_user
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error during registration: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error during registration"
+        )
+
+@router.post("/token", response_model=schemas.Token)
+async def login_for_access_token(
+    email: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    # Find user by email
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Verify password
+    if not verify_password(password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Create access token
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.email, "username": user.username}, 
+        expires_delta=access_token_expires
+    )
+    
+    # Return token and user info
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "user": {
+            "email": user.email,
+            "username": user.username
+        }
+    }
+
+@router.get("/me", response_model=schemas.User)
+async def read_users_me(current_user: models.User = Depends(get_current_active_user)):
+    return current_user
+
+@router.get("/me/files", response_model=schemas.UserWithFiles)
+async def read_user_files(current_user: models.User = Depends(get_current_active_user)):
+    return current_user
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(current_user: models.User = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    """Delete the currently logged in user"""
+    # Delete the user from the database
+    db.delete(current_user)
+    db.commit()
+    return None
